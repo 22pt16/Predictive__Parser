@@ -17,13 +17,54 @@ def main():
     # Input for grammar
     grammar_input = st.text_area("Enter your grammar (e.g., S->( L )|a; L-> L, S|S):")
     
-    if st.button("Validate Grammar"):
-        try:
-            grammar = Grammar(grammar_input)
-            st.success("Grammar is valid!")
-            st.session_state.grammar = grammar  # Store grammar in session state
-        except Exception as e:
-            st.error(f"Invalid grammar format: {str(e)}")
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        if st.button("Validate Grammar"):
+            try:
+                # Create grammar instance
+                grammar = Grammar(grammar_input)
+                
+                # Basic validation
+                if not grammar.productions:
+                    st.error("Empty or invalid grammar!")
+                    return
+
+                # Check if grammar is properly formed
+                valid = True
+                validation_messages = []
+
+                # Check if all non-terminals have productions
+                for nt in grammar.non_terminals:
+                    if nt not in grammar.productions:
+                        valid = False
+                        validation_messages.append(f"Non-terminal {nt} has no productions")
+
+                if valid:
+                    st.success("Grammar is valid for LL(1) parsing!")
+                    st.session_state.grammar = grammar  # Store grammar in session state
+                    
+                    # Show validation details
+                    with st.expander("See Validation Details"):
+                        st.write("Terminals:", grammar.terminals)
+                        st.write("Non-terminals:", grammar.non_terminals)
+                        st.write("Productions:", grammar.productions)
+                else:
+                    st.error("Grammar Validation Failed:")
+                    for msg in validation_messages:
+                        st.write(f"- {msg}")
+                    
+            except Exception as e:
+                st.error(f"Error during grammar validation: {str(e)}")
+    
+    with col2:
+        if st.button("Continue with Grammar"):
+            try:
+                grammar = Grammar(grammar_input)
+                st.session_state.grammar = grammar
+                st.success("Proceeding with the grammar processing.")
+            except Exception as e:
+                st.error(f"Error processing grammar: {str(e)}")
 
     if 'grammar' in st.session_state:
         grammar = st.session_state.grammar
@@ -33,86 +74,80 @@ def main():
         for lhs, rules in grammar.productions.items():
             st.write(f"{lhs} -> {' | '.join([' '.join(rule) for rule in rules])}")
 
-        # Buttons for grammar conversion
-        if st.button("Remove Left Recursion"):
-            grammar.remove_left_recursion()
-            st.success("Left recursion removed!")
-            st.subheader("Grammar after Left Recursion Removal")
-            for lhs, rules in grammar.productions.items():
-                st.write(f"{lhs} -> {' | '.join([' '.join(rule) for rule in rules])}")
-            st.write("Terminals:", grammar.terminals)
-            st.write("Non-terminals:", grammar.non_terminals)
+        # Create tabs for different operations
+        tab1, tab2, tab3 = st.tabs(["Grammar Transformations", "Sets Computation", "Parsing"])
 
-        if st.button("Remove Common Prefixes"):
-            grammar.remove_common_prefixes()
-            st.success("Common prefixes removed!")
-            st.subheader("Grammar after Common Prefix Removal")
-            for lhs, rules in grammar.productions.items():
-                st.write(f"{lhs} -> {' | '.join([' '.join(rule) for rule in rules])}")
-            st.write("Terminals:", grammar.terminals)
-            st.write("Non-terminals:", grammar.non_terminals)
+        with tab1:
+            # Buttons for grammar conversion
+            if st.button("Remove Left Recursion"):
+                grammar.remove_left_recursion()
+                st.success("Left recursion removed!")
+                st.subheader("Grammar after Left Recursion Removal")
+                for lhs, rules in grammar.productions.items():
+                    st.write(f"{lhs} -> {' | '.join([' '.join(rule) for rule in rules])}")
 
-        if st.button("Compute FIRST"):
-            grammar.compute_first()
-            st.success("FIRST sets computed!")
-            st.subheader("FIRST Sets")
-            for symbol, first_set in grammar.first.items():
-                st.write(f"FIRST({symbol}) = {first_set}")
+            if st.button("Remove Common Prefixes"):
+                grammar.remove_common_prefixes()
+                st.success("Common prefixes removed!")
+                st.subheader("Grammar after Common Prefix Removal")
+                for lhs, rules in grammar.productions.items():
+                    st.write(f"{lhs} -> {' | '.join([' '.join(rule) for rule in rules])}")
 
-        if st.button("Compute FOLLOW"):
-            grammar.compute_follow()
-            st.success("FOLLOW sets computed!")
-            st.subheader("FOLLOW Sets")
-            for symbol, follow_set in grammar.follow.items():
-                st.write(f"FOLLOW({symbol}) = {follow_set}")
+        with tab2:
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("Compute FIRST"):
+                    grammar.compute_first()
+                    st.success("FIRST sets computed!")
+                    st.subheader("FIRST Sets")
+                    for symbol, first_set in grammar.first.items():
+                        st.write(f"FIRST({symbol}) = {first_set}")
 
-        if st.button("Construct Predictive Table"):
-            grammar.construct_predictive_table()
-            st.success("Predictive parsing table constructed!")
-            st.write("Terminals:", grammar.terminals)
-            st.write("Non-terminals:", grammar.non_terminals)
-            st.subheader("Predictive Parsing Table")
-            for lhs, row in grammar.predictive_table.items():
-                for terminal, production in row.items():
-                    if production != "nil":
-                        st.write(f"M[{lhs}, {terminal}] = {' '.join(production)}")
+            with col2:
+                if st.button("Compute FOLLOW"):
+                    grammar.compute_follow()
+                    st.success("FOLLOW sets computed!")
+                    st.subheader("FOLLOW Sets")
+                    for symbol, follow_set in grammar.follow.items():
+                        st.write(f"FOLLOW({symbol}) = {follow_set}")
 
-        # Display terminals and non-terminals
-        st.subheader("Terminals and Non-terminals")
-        st.write("Terminals:", grammar.terminals)
-        st.write("Non-terminals:", grammar.non_terminals)
+            if st.button("Construct Predictive Table"):
+                grammar.construct_predictive_table()
+                st.success("Predictive parsing table constructed!")
+                st.subheader("Predictive Parsing Table")
+                
+                # Create a dataframe for better visualization
+                terminals = sorted(grammar.terminals)
+                table_data = []
+                for lhs in grammar.predictive_table:
+                    row = [lhs]
+                    for terminal in terminals:
+                        production = grammar.predictive_table[lhs].get(terminal, "nil")
+                        if isinstance(production, list):
+                            production = ' '.join(production)
+                        row.append(production)
+                    table_data.append(row)
+                
+                # Display the table
+                st.table([['Non-terminal'] + terminals] + table_data)
 
-        #Display Grammar
-        st.subheader("Grammar")
-        print("\nGrammar:")
-        for lhs in grammar.productions:
-            rules = grammar.productions[lhs]
-            for rule in rules:
-                st.write(f"\t{lhs} -> {' '.join(rule)}")
-                print(f"\t{lhs} -> {' '.join(rule)}")
+        with tab3:
+            # Input for parsing
+            input_string = st.text_input("Enter input string to parse (e.g., ( a , a ) ):")
+            
+            if st.button("Parse Input"):
+                if input_string.strip():
+                    parser = PredictiveParser(grammar)
+                    result = parser.parse(input_string.split())
+                    st.write("Parsing Result:", result)
 
-
-        # Input for parsing
-        input_string = st.text_input("Enter input string to parse (e.g., ( a , a ) ):")
-        
-        if st.button("Parse Input"):
-            parser = PredictiveParser(grammar)
-            result = parser.parse(input_string.split())
-            st.write(result)
-
-            # Visualize parse tree
-            if hasattr(parser, 'parse_tree') and parser.parse_tree:
-                dot = visualize_parse_tree(parser.parse_tree)
-                dot.render('parse_tree', format='png', cleanup=True)
-                st.image('parse_tree.png')
-
-            # Display stack and input
-            st.subheader("Stack and Input during Parsing")
-            if hasattr(parser, 'stack'):
-                st.write("Final Stack:", parser.stack)
-            if hasattr(parser, 'input_string'):
-                st.write("Remaining Input:", parser.input_string)
+                    # Display parsing steps
+                    if hasattr(parser, 'stack'):
+                        st.write("Final Stack:", parser.stack)
+                    if hasattr(parser, 'input_string'):
+                        st.write("Remaining Input:", parser.input_string)
+                else:
+                    st.warning("Please enter an input string to parse.")
 
 if __name__ == "__main__":
     main()
-

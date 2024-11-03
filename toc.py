@@ -1,5 +1,18 @@
+class GrammarValidationResult:
+    def __init__(self):
+        self.is_valid = True
+        self.errors = []
+        self.warnings = []
+
+    def add_error(self, error):
+        self.is_valid = False
+        self.errors.append(error)
+
+    def add_warning(self, warning):
+        self.warnings.append(warning)
+
 class Grammar:
-    def __init__(self, productions):
+    def __init__(self, productions , skip_validation=False):
         self.productions = self.parse_productions(productions)
         self.first = {}
         self.follow = {}
@@ -7,11 +20,100 @@ class Grammar:
         self.start_symbol = list(self.productions.keys())[0]
         self.terminals = set()  # Set for terminals
         self.non_terminals = set(self.productions.keys())  # Set for non-terminals
-        
+
+        # Grammar validation steps
+        if not skip_validation:
+            validation_result = self.validate_grammar()
+            if not validation_result.is_valid:
+                raise ValueError("\n".join(validation_result.errors))
+
         # Determine terminals
         self.determine_terminals()
         self.print_terminals_and_non_terminals()
 
+    def validate_grammar(self):
+        """Validates if the grammar is suitable for LL(1) parsing"""
+        result = GrammarValidationResult()
+        
+        # Check syntax
+        syntax_result = self.check_syntax()
+        if not syntax_result.is_valid:
+            result.errors.extend(syntax_result.errors)
+        
+        # Check undefined symbols
+        symbol_result = self.check_undefined_symbols()
+        if not symbol_result.is_valid:
+            result.errors.extend(symbol_result.errors)
+            
+        # Check LL(1) conditions
+        ll1_result = self.check_ll1_conditions()
+        if not ll1_result.is_valid:
+            result.errors.extend(ll1_result.errors)
+            
+        return result
+    
+
+    def check_syntax(self):
+        """Checks basic syntax of the grammar"""
+        result = GrammarValidationResult()
+        for lhs, rules in self.productions.items():
+            if not lhs.isalnum():
+                result.add_error(f"Invalid LHS symbol '{lhs}'")
+                
+            for rule in rules:
+                if not rule:
+                    result.add_error(f"Empty production for {lhs}")
+                    
+                for symbol in rule:
+                    if not (symbol.isalnum() or symbol in {'ε', '+', '*', '(', ')', ',', '/'}):
+                        result.add_error(f"Invalid symbol '{symbol}' in production")
+        return result
+
+    def check_undefined_symbols(self):
+        """Checks for undefined non-terminals in productions"""
+        result = GrammarValidationResult()
+        all_symbols = set()
+        for rules in self.productions.values():
+            for rule in rules:
+                all_symbols.update(rule)
+        
+        undefined = set()
+        for symbol in all_symbols:
+            if (symbol.isupper() and  # Assuming uppercase letters are non-terminals
+                symbol not in self.non_terminals and 
+                symbol != 'ε'):
+                undefined.add(symbol)
+        
+        if undefined:
+            result.add_error(f"Undefined non-terminals: {undefined}")
+        return result
+
+    def check_ll1_conditions(self):
+        """Checks LL(1) conditions after computing FIRST and FOLLOW sets"""
+        # Compute FIRST and FOLLOW sets if not already computed
+        result = GrammarValidationResult()
+        
+        if not self.first:
+            self.compute_first()
+        if not self.follow:
+            self.compute_follow()
+
+        for lhs, rules in self.productions.items():
+            first_sets = []
+            for rule in rules:
+                first = self.compute_first_for_production(rule)
+                
+                for prev_first in first_sets:
+                    if first & prev_first:
+                        result.add_error(f"Grammar is not LL(1) - FIRST sets overlap for {lhs}")
+                first_sets.append(first)
+                
+                if 'ε' in first:
+                    follow = self.follow[lhs]
+                    if first & follow:
+                        result.add_error(f"Grammar is not LL(1) - FIRST/FOLLOW conflict for {lhs}")
+        return result
+    
     def determine_terminals(self):
         for lhs, rules in self.productions.items():
             for rule in rules:
@@ -348,9 +450,9 @@ class PredictiveParser:
 
 
 # Example usage
-
+"""
 print("Given Grammar: ")
-prod = "S->( L )|a; L-> L, S|S"   #Take care of Input method always!
+prod = "S->( L )|a; L-> L , S|S"   #Take care of Input method always!
 
 grammar = Grammar(prod)
 grammar.remove_left_recursion() #DONE
@@ -365,7 +467,7 @@ input_string = ["(", "a", ",", "a", ")"]
 parser = PredictiveParser(grammar)
 result = parser.parse(input_string)     #DONE
 print(result)
-
+"""
 
 """
 E -> T E';
@@ -373,4 +475,8 @@ E' -> + T E' | ε                ;
 T -> F T';
 T' -> * F T' | ε ;
 F -> i | ( E );
+
+
+S->(  L  )| a; 
+L-> L ,  S | S
 """    
